@@ -29,5 +29,19 @@ sleep 2
 nohup /home/ajserver/.local/bin/cloudflared tunnel --url http://127.0.0.1:8088 > /tmp/cloudflared-router.log 2>&1 &
 
 # optional status snapshot
-sleep 1
+sleep 2
 ss -ltnp | egrep '127.0.0.1:(3000|3010|8088)' || true
+
+# extract quick tunnel URL and notify via OpenClaw if available
+URL=""
+for _ in $(seq 1 15); do
+  URL=$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/cloudflared-router.log | tail -n 1 || true)
+  [[ -n "${URL:-}" ]] && break
+  sleep 2
+done
+if [[ -n "${URL:-}" ]]; then
+  echo "$URL" > /home/ajserver/projects/cloudflare-current-url.txt
+  if command -v openclaw >/dev/null 2>&1; then
+    openclaw system event --text "Cloudflare tunnel started: $URL" --mode now >/tmp/openclaw-notify.log 2>&1 || true
+  fi
+fi

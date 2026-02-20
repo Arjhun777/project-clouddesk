@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ENV_FILE="/home/ajserver/projects/project-openclaw/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+fi
+
+: "${AJ_ROUTER_USER:?AJ_ROUTER_USER is required (set in .env)}"
+: "${AJ_ROUTER_PASS:?AJ_ROUTER_PASS is required (set in .env)}"
+
 # kill old instances
 pkill -f 'cloudflared tunnel --url http://127.0.0.1:8088' || true
 pkill -f 'cloudflared tunnel --url http://127.0.0.1:8080' || true
@@ -13,7 +22,7 @@ pkill -f '^node server.js$' || true
 # start apps
 nohup bash -lc 'cd /home/ajserver/projects/aj-chat-app && HOST=127.0.0.1 PORT=3000 npm start' > /tmp/aj-chat-app.log 2>&1 &
 nohup bash -lc 'cd /home/ajserver/projects/aj-drive && HOST=127.0.0.1 PORT=3010 npm start' > /tmp/aj-drive.log 2>&1 &
-nohup bash -lc 'cd /home/ajserver/projects/project-router && ROUTER_HOST=127.0.0.1 ROUTER_PORT=8088 AJ_ROUTER_USER=aj AJ_ROUTER_PASS=Aj@123456 npm start' > /tmp/project-router.log 2>&1 &
+nohup bash -lc "cd /home/ajserver/projects/project-router && ROUTER_HOST=127.0.0.1 ROUTER_PORT=8088 AJ_ROUTER_USER='${AJ_ROUTER_USER}' AJ_ROUTER_PASS='${AJ_ROUTER_PASS}' npm start" > /tmp/project-router.log 2>&1 &
 
 # wait router then start tunnel
 sleep 2

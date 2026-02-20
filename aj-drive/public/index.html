@@ -1,0 +1,188 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AJ Drive</title>
+  <style>
+    :root{
+      --bg:#f6f8fc; --card:#fff; --line:#dfe3eb; --text:#1f2937; --muted:#6b7280; --brand:#2563eb;
+    }
+    *{box-sizing:border-box}
+    body{font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--text);max-width:1100px;margin:20px auto;padding:12px}
+    h1{margin:6px 0 14px 2px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+    .toolbar{display:grid;grid-template-columns:1.2fr .8fr .8fr .8fr;gap:10px;align-items:end}
+    select,input,button{width:100%;padding:10px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;color:#111827}
+    button{background:var(--brand);color:#fff;border:none;font-weight:600;cursor:pointer}
+    button.secondary{background:#eef2ff;color:#1e3a8a;border:1px solid #c7d2fe}
+    .layout{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}
+    .muted{color:var(--muted);font-size:13px}
+    .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:#f3f4f6;padding:6px 8px;border-radius:8px}
+    .list{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:12px}
+    .item{padding:10px 12px;border-bottom:1px solid #eef2f7;display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .item:last-child{border-bottom:none}
+    .name{cursor:pointer;word-break:break-all}
+    .name:hover{text-decoration:underline}
+    pre{white-space:pre-wrap;background:#0b1220;color:#e5e7eb;border:1px solid #1f2937;padding:10px;border-radius:10px;max-height:220px;overflow:auto}
+    @media(max-width:860px){.layout{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr 1fr}.toolbar .full{grid-column:1/-1}}
+  </style>
+</head>
+<body>
+  <h1>AJ Drive</h1>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="full">
+        <label>External drive</label>
+        <select id="storage"></select>
+      </div>
+      <button id="openStorageBtn">Open</button>
+      <button id="backBtn" class="secondary">⬅ Back</button>
+      <button id="upBtn" class="secondary">⬆ Up</button>
+    </div>
+    <div class="muted" style="margin-top:10px">Current path</div>
+    <div id="cwd" class="path">/</div>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <h3 style="margin-top:4px">Files</h3>
+      <div id="items" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:4px">Upload</h3>
+      <p class="muted">Images/videos only. Multiple files supported.</p>
+      <input id="files" type="file" multiple accept="image/*,video/*" />
+      <button id="uploadBtn" style="margin-top:10px">Upload Securely</button>
+      <p id="status"></p>
+      <pre id="result"></pre>
+    </div>
+  </div>
+
+  <script>
+    const storageSel = document.getElementById('storage');
+    const filesInput = document.getElementById('files');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const openStorageBtn = document.getElementById('openStorageBtn');
+    const upBtn = document.getElementById('upBtn');
+    const backBtn = document.getElementById('backBtn');
+    const itemsEl = document.getElementById('items');
+    const cwdEl = document.getElementById('cwd');
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+
+    let currentPath = '/';
+    let historyStack = [];
+
+    async function loadStorages() {
+      const r = await fetch('api/storages');
+      const j = await r.json();
+      storageSel.innerHTML = '';
+      (j.storages || []).forEach(s => {
+        const o = document.createElement('option');
+        o.value = s.id;
+        o.textContent = s.label;
+        storageSel.appendChild(o);
+      });
+      if (!(j.storages || []).length) {
+        itemsEl.innerHTML = '<div class="item"><div class="muted">No external drives detected. Mount a USB/external drive first.</div></div>';
+      }
+    }
+
+    function joinPath(base, name) {
+      const b = base === '/' ? '' : base;
+      return `${b}/${name}`;
+    }
+
+    function parentPath(p) {
+      if (!p || p === '/') return '/';
+      const a = p.split('/').filter(Boolean);
+      a.pop();
+      return '/' + a.join('/');
+    }
+
+    async function browse(path = '/', pushHist = true) {
+      if (pushHist && path !== currentPath) historyStack.push(currentPath);
+      currentPath = path;
+      cwdEl.textContent = `${storageSel.value || ''}${path}`;
+      itemsEl.innerHTML = '<div class="item"><div class="muted">Loading...</div></div>';
+
+      const q = new URLSearchParams({ storage: storageSel.value, path });
+      const r = await fetch(`api/list?${q.toString()}`);
+      const j = await r.json();
+      if (!j.ok) {
+        itemsEl.innerHTML = `<div class="item"><div class="muted">${j.error || 'Failed'}</div></div>`;
+        return;
+      }
+
+      itemsEl.innerHTML = '';
+      (j.items || []).forEach(it => {
+        const row = document.createElement('div');
+        row.className = 'item';
+
+        const left = document.createElement('div');
+        left.className = 'name';
+        left.textContent = `${it.type === 'dir' ? '📁' : '📄'} ${it.name}`;
+
+        const right = document.createElement('div');
+        right.className = 'muted';
+        right.textContent = it.type === 'dir' ? 'folder' : `${Math.max(1, Math.round((it.size||0)/1024))} KB`;
+
+        left.onclick = () => {
+          if (it.type === 'dir') browse(joinPath(currentPath, it.name));
+          else {
+            const filePath = joinPath(currentPath, it.name);
+            const u = new URL('api/file', window.location.href);
+            u.searchParams.set('storage', storageSel.value);
+            u.searchParams.set('path', filePath);
+            window.open(u.toString(), '_blank');
+          }
+        };
+
+        row.appendChild(left);
+        row.appendChild(right);
+        itemsEl.appendChild(row);
+      });
+    }
+
+    openStorageBtn.onclick = () => { historyStack = []; browse('/'); };
+    upBtn.onclick = () => browse(parentPath(currentPath));
+    backBtn.onclick = () => {
+      if (!historyStack.length) return;
+      const prev = historyStack.pop();
+      browse(prev, false);
+    };
+
+    uploadBtn.onclick = async () => {
+      const files = filesInput.files;
+      if (!files.length) return alert('Select at least one file');
+      if (!storageSel.value) return alert('Select a storage first');
+
+      const fd = new FormData();
+      fd.append('storage', storageSel.value);
+      for (const f of files) fd.append('files', f);
+
+      statusEl.textContent = 'Uploading...';
+      resultEl.textContent = '';
+      try {
+        const r = await fetch('api/upload', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || 'Upload failed');
+        statusEl.textContent = `Uploaded ${j.uploaded} file(s)`;
+        resultEl.textContent = JSON.stringify(j.files, null, 2);
+        browse(currentPath, false);
+      } catch (e) {
+        statusEl.textContent = 'Failed';
+        resultEl.textContent = e.message;
+      }
+    };
+
+    (async () => {
+      await loadStorages();
+      if (storageSel.value) browse('/');
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# kill old instances
+pkill -f 'cloudflared tunnel --url http://127.0.0.1:8088' || true
+pkill -f 'cloudflared tunnel --url http://127.0.0.1:8080' || true
+pkill -f 'ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 80:localhost:3000 nokey@localhost.run' || true
+pkill -f '/home/ajserver/projects/aj-chat-app' || true
+pkill -f '/home/ajserver/projects/aj-drive' || true
+pkill -f '/home/ajserver/projects/project-router' || true
+pkill -f '^node server.js$' || true
+
+# start apps
+nohup bash -lc 'cd /home/ajserver/projects/aj-chat-app && HOST=127.0.0.1 PORT=3000 npm start' > /tmp/aj-chat-app.log 2>&1 &
+nohup bash -lc 'cd /home/ajserver/projects/aj-drive && HOST=127.0.0.1 PORT=3010 npm start' > /tmp/aj-drive.log 2>&1 &
+nohup bash -lc 'cd /home/ajserver/projects/project-router && ROUTER_HOST=127.0.0.1 ROUTER_PORT=8088 AJ_ROUTER_USER=aj AJ_ROUTER_PASS=Aj@123456 npm start' > /tmp/project-router.log 2>&1 &
+
+# wait router then start tunnel
+sleep 2
+nohup /home/ajserver/.local/bin/cloudflared tunnel --url http://127.0.0.1:8088 > /tmp/cloudflared-router.log 2>&1 &
+
+# optional status snapshot
+sleep 1
+ss -ltnp | egrep '127.0.0.1:(3000|3010|8088)' || true

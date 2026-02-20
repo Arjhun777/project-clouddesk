@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AJ MeetChat</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <section id="joinView" class="card joinCard">
+      <h1>AJ MeetChat</h1>
+      <p>Enter your name and jump in.</p>
+      <form id="joinForm">
+        <input id="usernameInput" placeholder="Your name" maxlength="20" required />
+        <button type="submit">Join</button>
+      </form>
+      <p id="joinError" class="error"></p>
+    </section>
+
+    <section id="chatView" class="hidden appGrid">
+      <aside class="leftPane card">
+        <div class="meHead">
+          <div>
+            <h2 id="meLabel"></h2>
+            <p class="muted small">Online now</p>
+          </div>
+        </div>
+        <ul id="usersList" class="usersList"></ul>
+      </aside>
+
+      <main class="mainPane card">
+        <header class="chatHeader">
+          <div>
+            <h3 id="chatTitle">Select a user to chat</h3>
+            <p id="callStatus" class="muted">No active call</p>
+          </div>
+          <div class="actionRow">
+            <button id="videoCallBtn" type="button">📹 Call</button>
+            <button id="screenShareBtn" type="button">🖥️ Share</button>
+            <button id="switchCameraBtn" type="button">🔄 Camera</button>
+            <button id="endCallBtn" type="button" class="danger">❌ End</button>
+          </div>
+        </header>
+
+        <section class="videoStage">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <video id="localVideo" autoplay playsinline muted></video>
+        </section>
+
+        <section id="messages" class="messages"></section>
+
+        <form id="messageForm" class="composer">
+          <input id="messageInput" placeholder="Type a message" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+        <p id="sendError" class="error"></p>
+      </main>
+    </section>
+  </div>
+
+  <script src="socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -88,7 +88,7 @@ This script:
 
 ## 6) Enable auto-start on reboot
 
-Add startup script to crontab:
+### Option A: cron (quick)
 
 ```bash
 (crontab -l 2>/dev/null; echo '@reboot /home/ajserver/projects/project-clouddesk/start-aj-services.sh') | crontab -
@@ -98,6 +98,30 @@ Verify:
 
 ```bash
 crontab -l
+```
+
+### Option B: systemd (recommended)
+
+Generic, non-sensitive service templates are included in:
+
+- `deploy/systemd/openclaw-gateway.service.example`
+- `deploy/systemd/project-clouddesk.service.example`
+
+Copy and adapt placeholders (`<YOUR_LINUX_USER>`), then install:
+
+```bash
+sudo cp deploy/systemd/openclaw-gateway.service.example /etc/systemd/system/openclaw-gateway.service
+sudo cp deploy/systemd/project-clouddesk.service.example /etc/systemd/system/project-clouddesk.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now openclaw-gateway.service
+sudo systemctl enable --now project-clouddesk.service
+```
+
+Check status:
+
+```bash
+systemctl status openclaw-gateway.service
+systemctl status project-clouddesk.service
 ```
 
 ---

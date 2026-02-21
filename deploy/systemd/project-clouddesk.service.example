@@ -1,0 +1,16 @@
+[Unit]
+Description=Project CloudDesk Stack (Chat + Drive + Router + Tunnel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<YOUR_LINUX_USER>
+WorkingDirectory=/home/<YOUR_LINUX_USER>/projects/project-clouddesk
+EnvironmentFile=/home/<YOUR_LINUX_USER>/projects/project-clouddesk/.env
+ExecStart=/home/<YOUR_LINUX_USER>/projects/project-clouddesk/start-aj-services.sh
+Restart=always
+RestartSec=8
+
+[Install]
+WantedBy=multi-user.target

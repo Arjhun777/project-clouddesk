@@ -19,6 +19,8 @@ const videoCallBtn = document.getElementById('videoCallBtn');
 const endCallBtn = document.getElementById('endCallBtn');
 const screenShareBtn = document.getElementById('screenShareBtn');
 const switchCameraBtn = document.getElementById('switchCameraBtn');
+const micToggleBtn = document.getElementById('micToggleBtn');
+const camToggleBtn = document.getElementById('camToggleBtn');
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
@@ -34,12 +36,18 @@ let remoteStream = null;
 let pc = null;
 let activeCallUser = '';
 let usingFrontCamera = true;
+let pendingIceCandidates = [];
+let micEnabled = true;
+let camEnabled = true;
 
 const rtcConfig = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
-  ]
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ],
+  iceCandidatePoolSize: 10
 };
 
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -110,6 +118,7 @@ async function ensureLocalMedia() {
   if (localStream) return localStream;
   localStream = await getCameraStream(usingFrontCamera);
   localVideo.srcObject = localStream;
+  applyMediaToggles();
   return localStream;
 }
 
@@ -133,12 +142,29 @@ function cleanupPeer() {
 function resetCallState(msg = 'No active call') {
   cleanupPeer();
   activeCallUser = '';
+  pendingIceCandidates = [];
   setCallStatus(msg);
+}
+
+async function flushPendingIce() {
+  if (!pc || !pc.remoteDescription) return;
+  const queue = [...pendingIceCandidates];
+  pendingIceCandidates = [];
+  for (const c of queue) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(c));
+    } catch (err) {
+      console.error('ICE flush error', err);
+    }
+  }
 }
 
 function ensurePeer(targetUser) {
   if (pc) return pc;
   pc = new RTCPeerConnection(rtcConfig);
+
+  pc.addTransceiver('audio', { direction: 'sendrecv' });
+  pc.addTransceiver('video', { direction: 'sendrecv' });
 
   pc.onicecandidate = (event) => {
     if (event.candidate && targetUser) {
@@ -149,6 +175,13 @@ function ensurePeer(targetUser) {
   pc.ontrack = (event) => {
     remoteStream = event.streams[0];
     remoteVideo.srcObject = remoteStream;
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    const state = pc?.iceConnectionState;
+    if (state === 'checking') setCallStatus('Connecting call...');
+    if (state === 'connected' || state === 'completed') setCallStatus(`In call with ${activeCallUser}`);
+    if (state === 'failed') setCallStatus('Call failed to connect. Network may require TURN relay.');
   };
 
   pc.onconnectionstatechange = () => {
@@ -211,6 +244,7 @@ async function acceptIncomingCall(from, offer) {
     addTracksToPeer(peer, stream);
 
     await peer.setRemoteDescription(new RTCSessionDescription(offer));
+    await flushPendingIce();
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
 
@@ -235,6 +269,26 @@ function endCall(notify = true) {
 
 function getVideoSender() {
   return pc?.getSenders().find(s => s.track && s.track.kind === 'video');
+}
+
+function applyMediaToggles() {
+  if (!localStream) return;
+  localStream.getAudioTracks().forEach(t => { t.enabled = micEnabled; });
+  localStream.getVideoTracks().forEach(t => { t.enabled = camEnabled; });
+  micToggleBtn.classList.toggle('active', !micEnabled);
+  camToggleBtn.classList.toggle('active', !camEnabled);
+  micToggleBtn.textContent = micEnabled ? '🎙️ Mute' : '🎙️ Unmute';
+  camToggleBtn.textContent = camEnabled ? '📷 Video Off' : '📷 Video On';
+}
+
+function toggleMic() {
+  micEnabled = !micEnabled;
+  applyMediaToggles();
+}
+
+function toggleCam() {
+  camEnabled = !camEnabled;
+  applyMediaToggles();
 }
 
 async function startScreenShare() {
@@ -282,6 +336,7 @@ async function switchCamera() {
     const oldStream = localStream;
     localStream = newStream;
     localVideo.srcObject = localStream;
+    applyMediaToggles();
 
     if (pc) {
       const vSender = pc.getSenders().find(s => s.track?.kind === 'video');
@@ -341,6 +396,8 @@ endCallBtn.addEventListener('click', async () => {
   await stopScreenShare();
   endCall(true);
 });
+micToggleBtn.addEventListener('click', toggleMic);
+camToggleBtn.addEventListener('click', toggleCam);
 screenShareBtn.addEventListener('click', async () => {
   if (screenStream) await stopScreenShare();
   else await startScreenShare();
@@ -379,6 +436,7 @@ socket.on('call:answered', async ({ from, answer }) => {
   try {
     if (!pc) return;
     await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    await flushPendingIce();
     activeCallUser = from;
     setCallStatus(`In call with ${from}`);
   } catch (err) {
@@ -388,9 +446,12 @@ socket.on('call:answered', async ({ from, answer }) => {
 
 socket.on('call:ice', async ({ candidate }) => {
   try {
-    if (pc && candidate) {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    if (!candidate) return;
+    if (!pc || !pc.remoteDescription) {
+      pendingIceCandidates.push(candidate);
+      return;
     }
+    await pc.addIceCandidate(new RTCIceCandidate(candidate));
   } catch (err) {
     console.error('ICE error', err);
   }
@@ -406,4 +467,12 @@ socket.on('call:ended', ({ from }) => {
 
 socket.on('call:busy', ({ from }) => {
   resetCallState(`${from} is busy.`);
+});
+
+socket.on('session:replaced', () => {
+  resetCallState('Session moved to a refreshed tab.');
+});
+
+window.addEventListener('beforeunload', () => {
+  try { socket.disconnect(); } catch {}
 });

@@ -49,8 +49,18 @@ io.on('connection', (socket) => {
     const username = String(usernameRaw || '').trim();
 
     if (!username) return cb?.({ ok: false, error: 'Username is required.' });
-    if (socketsByUser.has(username)) {
-      return cb?.({ ok: false, error: 'Username already online. Pick another one.' });
+
+    // Allow quick refresh/rejoin by reclaiming the username from stale socket.
+    const existingSocketId = socketsByUser.get(username);
+    if (existingSocketId && existingSocketId !== socket.id) {
+      const existingSocket = io.sockets.sockets.get(existingSocketId);
+      clearCallForUser(username, true);
+      usersBySocket.delete(existingSocketId);
+      socketsByUser.delete(username);
+      if (existingSocket) {
+        existingSocket.emit('session:replaced');
+        existingSocket.disconnect(true);
+      }
     }
 
     usersBySocket.set(socket.id, username);

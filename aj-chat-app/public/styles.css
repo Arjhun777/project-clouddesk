@@ -47,6 +47,8 @@ button {
 }
 button:hover { filter: brightness(1.06); }
 button.danger { background: linear-gradient(90deg, #dc2626, #fb7185); color: #fff; }
+button.secondary { background: #334155; color: #e5e7eb; }
+button.secondary.active { background: #0ea5e9; color: #062338; }
 
 .appGrid {
   display: grid;
